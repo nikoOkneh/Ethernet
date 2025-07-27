@@ -23,7 +23,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "lwip/udp.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,7 +45,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+extern struct netif gnetif;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -55,7 +56,35 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static struct udp_pcb *upcb;
 
+void udp_receive_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
+    if (p != NULL) {
+        char cmd[64];
+        strncpy(cmd, (char*)p->payload, p->len);
+        cmd[p->len] = '\0';  // Обязательно завершаем строку!
+
+        // Парсинг команд
+        if (strstr(cmd, "LED OFF")) {
+            HAL_GPIO_WritePin(GPIOC, LED_Pin, GPIO_PIN_SET);  // Включить
+            
+        } 
+        else if (strstr(cmd, "LED ON")) {
+            HAL_GPIO_WritePin(GPIOC, LED_Pin, GPIO_PIN_RESET); // Выключить
+            
+        }
+
+        // Отправляем ответ
+        udp_sendto(pcb, p, addr, port);
+        pbuf_free(p);
+    }
+}
+
+void udp_server_init() {
+    upcb = udp_new();
+    udp_bind(upcb, IP_ADDR_ANY, 1234);  // Порт 1234
+    udp_recv(upcb, udp_receive_callback, NULL);
+}
 /* USER CODE END 0 */
 
 /**
@@ -89,7 +118,13 @@ int main(void)
   MX_GPIO_Init();
   MX_LWIP_Init();
   /* USER CODE BEGIN 2 */
+    ip_addr_t ip, mask, gw;
+    IP4_ADDR(&ip, 192, 168, 1, 102);
+    IP4_ADDR(&mask, 255, 255, 255, 0);
+    IP4_ADDR(&gw, 192, 168, 1, 1);
+    netif_set_addr(&gnetif, &ip, &mask, &gw);
 
+    udp_server_init();  // Запуск UDP-сервера
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -100,6 +135,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
       MX_LWIP_Process() ;
+      HAL_Delay(1);
   }
   /* USER CODE END 3 */
 }
